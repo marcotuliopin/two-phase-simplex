@@ -17,18 +17,38 @@ Possible cases:
 """
 
 class Parser():
+    """Read the input LP for Simplex. Put the expressions in standard form while reading.
+
+    Attributes:
+        epsilon   : int
+            small constant for rounding numbers.
+        var_count : int
+            number of variables in the LP. 
+        variables : dict[str, list[int]]
+            variables information.
+        slack     : list[int]
+            column index in coefficient matrix.
+        objective : list[int]
+            coefficients of the objective function.
+        A         : list[list[int]]
+            coefficient matrix of the constraints.
+        b         : list[int]
+            right-hand side values of the constraints.
+    """
     def __init__(self):
         self.epsilon = 10 ** -4
-        self.var_count = 0 # number of variables
-        self.variables = {} # variables {name of variable: #[column idx in self.A, 
-                                                           # column idx in self.A such that var = var' - var",
-                                                           # m such that var = var' + m,
-                                                           # n such that var = var' * n]}
-        self.slack = [] # slack variables[ column index in self.A]
-        self.objective = [] # objective function [coefficients]
-        self.A = [] # coefficient matrix
-        self.b = [] # constraint vector
-        self.free = [] # free variables
+        self.var_count = 0
+        self.variables = {} # key: variable name
+                            # values:
+                            #     [column index in coefficient matrix,
+                            #      column of variable used for substitution var = var + var",
+                            #      m used for substitution var = var' + m,
+                            #      n used for substitution var = var' * n]
+        self.slack = []
+        self.objective = []
+        self.A = []
+        self.b = []
+        self.free = []
 
 
     """TODO: ver como tratar pontos flutuantes"""
@@ -58,6 +78,7 @@ class Parser():
             self.handle_free_var()
 
         self.__test_result()
+
 
     def get_objective_function(self, equation: list[str]): # MIN x1 + 2*x2
         """Build objective function from expression."""
@@ -236,6 +257,7 @@ class Parser():
         equation[equation.index('<=')] = '>='
         self.handle_bounding_lower_bound(equation)
 
+
     def handle_free_var(self):
         """Separate free variables onto two bound variables."""
         """
@@ -255,6 +277,7 @@ class Parser():
 
         # empty list of free variables
         self.free.clear()
+
 
     # TODO: está errado. Consertar.
     def parse_constraint(self, equation: list[str]):
@@ -283,6 +306,7 @@ class Parser():
         
         return [a, b]
     
+
     def __test_result(self):
         """Print test."""
         print('MIN ', self.objective)
@@ -361,3 +385,31 @@ class Parser():
             else:
                 coeff /= int(symbols[i + 1])
         return coeff
+
+class Variable():
+    """Variable of a LP.
+    
+    Attributes:
+
+    name   : str
+        variable name.
+    index  : int
+        index of variable in the coefficient matrix.
+    sindex : int
+        index of substitution variable in the coefficient matrix (var = var' + var").
+    m      : int
+        value of the substitution var = var' + m.
+    n      : int
+        value of the substitution var = var' * n.
+    """
+    def __init__(self, _name: str, _idx1: int, _idx2: int = -1, _m: int = 0, _n: int = 1):
+        self.name = _name
+        self.index = _idx1
+        self.sindex = _idx2
+        self.m = _m
+        self.n = _n
+    
+    def get_value(self, objective: list[int]):
+        if self.sindex != -1:
+            return objective[self.index] + objective[self.sindex]
+        return objective[self.index] * self.n + self.m
