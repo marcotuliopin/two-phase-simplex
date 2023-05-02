@@ -11,7 +11,7 @@ Possible cases:
 5- x1 + x2 == +- 1 [DONE]
 6- x1 >= 0 [DONE]
 7- x1 >= i; i != 0 [DONE]
-8- x1 <= i [TODO]
+8- x1 <= i [DONE]
 9- x1 == 0 [TODO]
 """
 
@@ -21,7 +21,8 @@ class Parser():
         self.var_count = 0 # number of variables
         self.variables = {} # variables {name of variable: #[column index in self.A, 
                                                            # column 2 index in self.A,
-                                                           # substitution]}
+                                                           # m such that var = var' + m,
+                                                           # n such that var = var' * n]}
         self.slack = [] # slack variables[ column index in self.A]
         self.objective = [] # objective function [coefficients]
         self.A = [] # coefficient matrix
@@ -43,16 +44,16 @@ class Parser():
                 match equation[0]:
                     case "MIN":
                         # get objective function when it's minimization
-                        equation = self.__transform_max_case(equation[1:])
-                        self.objective = self.get_objective_function(equation)
+                        self.objective = self.get_objective_function(equation[1:])
                     case 'MAX':
                         # get objective function when it's maximization
-                        self.objective = self.get_objective_function(equation[1:])
+                        equation = self.__transform_max_case(equation[1:])
+                        self.objective = self.get_objective_function(equation)
                     case _:
                         # get constraint and add it to coefficient matrix and constraint vector
                         self.get_constraint(equation)
-        print('ok')
 
+        self.__test_result()
 
     def get_objective_function(self, equation: list[str]): # MIN x1 + 2*x2
         """Build objective function from expression."""
@@ -101,6 +102,7 @@ class Parser():
         # check if it's a bounding constraint. Ex: x >= 0
         if '+' not in equation and '-' not in equation:
             self.handle_bounding_lower_bound(equation)
+            return
 
         if equation[idx + 1] == '-': # x1 + x2 >= -1 -> - x1 - x2 >= 1
             # handle negative constraint
@@ -136,7 +138,9 @@ class Parser():
         # TODO
         # check if it's a bounding constraint. Ex: x <= 0
         if '+' not in equation and '-' not in equation:
-            self.handle_bounding_upper_bound(equation)
+            if equation[len(equation) - 1] == '0':
+                self.handle_bounding_upper_bound(equation)
+                return
 
         # get right side of the inequation
         if equation[idx + 1] == '-': # x1 + x2 >= -1 -> - x1 - x2 >= 1
@@ -210,6 +214,25 @@ class Parser():
             self.variables[var][2] = equation[2]
 
 
+    # TODO: considerar casos:
+    # 1. - x <= i
+    # 2. x <= - i
+    def handle_bounding_upper_bound(self, equation: list[str]): # x1 <= i
+        """Handle a bounding upper bound inequality and put it in standard form."""
+        var = equation[0]
+
+        # addd variable to the dictionary if never seen before
+        if not var in self.variables:
+            self.__add_variable(var)
+        
+        # make the substitution var = -var'
+        self.variables[var][3] = -1
+
+        # solve it like a lower bound case
+        equation[equation.index('<=')] = '>='
+        self.handle_bounding_lower_bound(equation)
+
+
     # TODO: está errado. Consertar.
     def parse_constraint(self, equation: list[str]):
         """Help parsing constraint equation."""
@@ -236,6 +259,12 @@ class Parser():
             a[self.variables[var][0]] += coeff
         
         return [a, b]
+    
+    def __test_result(self):
+        """Print test."""
+        print('MIN ', self.objective)
+        for i in range(len(self.A)):
+            print(self.A[i], self.b[i])
 
 
     def __parse_expression(self, expression: list[str]): # 2*x1
@@ -274,7 +303,7 @@ class Parser():
 
     def __add_variable(self, var: str):
         """Add new variable to dictionary. Initially, also add it as a free variable."""
-        self.variables[var] = [self.var_count, -1, 0]
+        self.variables[var] = [self.var_count, -1, 0, 1]
         self.var_count += 1
         self.free.append(var)
 
