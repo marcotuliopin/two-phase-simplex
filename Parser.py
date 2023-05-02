@@ -12,15 +12,16 @@ Possible cases:
 6- x1 >= 0 [DONE]
 7- x1 >= i; i != 0 [DONE]
 8- x1 <= i [DONE]
-9- x1 == 0 [TODO]
+9- x1 == 0 [DONE]
+10- variável livre [DONE]
 """
 
 class Parser():
     def __init__(self):
         self.epsilon = 10 ** -4
         self.var_count = 0 # number of variables
-        self.variables = {} # variables {name of variable: #[column index in self.A, 
-                                                           # column 2 index in self.A,
+        self.variables = {} # variables {name of variable: #[column idx in self.A, 
+                                                           # column idx in self.A such that var = var' - var",
                                                            # m such that var = var' + m,
                                                            # n such that var = var' * n]}
         self.slack = [] # slack variables[ column index in self.A]
@@ -52,6 +53,9 @@ class Parser():
                     case _:
                         # get constraint and add it to coefficient matrix and constraint vector
                         self.get_constraint(equation)
+        
+        if self.free:
+            self.handle_free_var()
 
         self.__test_result()
 
@@ -232,6 +236,25 @@ class Parser():
         equation[equation.index('<=')] = '>='
         self.handle_bounding_lower_bound(equation)
 
+    def handle_free_var(self):
+        """Separate free variables onto two bound variables."""
+        """
+        se for bound variable:
+            variables[2] = var_count
+            adiciona nova coluna para A -> vai ter os coeficientes da coluna variables[1] com o sinal trocado
+        """
+        for var in self.free:
+            # create new variable
+            self.variables[var][1] = self.var_count
+            self.var_count += 1
+            # create column for new variable
+            col = [-a[self.variables[var][0]] for a in self.A]
+            # add column to matrix
+            for (a, c) in zip(self.A, c):
+                a.append(c)
+
+        # empty list of free variables
+        self.free.clear()
 
     # TODO: está errado. Consertar.
     def parse_constraint(self, equation: list[str]):
