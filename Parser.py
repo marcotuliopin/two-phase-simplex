@@ -24,8 +24,8 @@ class Parser():
             small constant for rounding numbers.
         var_count : int
             number of variables in the LP. 
-        variables : dict[str, list[int]]
-            variables information.
+        variables : dict[str, Variable]
+            variables information. See Variable definition for more.
         slack     : list[int]
             column index in coefficient matrix.
         objective : list[int]
@@ -38,12 +38,7 @@ class Parser():
     def __init__(self):
         self.epsilon = 10 ** -4
         self.var_count = 0
-        self.variables = {} # key: variable name
-                            # values:
-                            #     [column index in coefficient matrix,
-                            #      column of variable used for substitution var = var + var",
-                            #      m used for substitution var = var' + m,
-                            #      n used for substitution var = var' * n]
+        self.variables = {}
         self.slack = []
         self.objective = []
         self.A = []
@@ -99,9 +94,10 @@ class Parser():
             elif not var in self.variables:
                 # add new variable to the dictionary
                 self.__add_variable(var)
+                # add new variable to the objective function
                 objective.append(0)
             # add coefficient to objective function
-            objective[self.variables[var][0]] += coeff
+            objective[self.variables[var].index] += coeff
         return objective
 
 
@@ -229,14 +225,14 @@ class Parser():
             self.free.pop(self.free.index(var))
         else:
             # handle var >= l; l != 0
-            idx = self.variables[var][0]
+            idx = self.variables[var].index
             # find each constraint that var happens
             for i in range(len(self.A)):
                 if self.A[i][idx] != 0:
                     # make b = b - coeff*l
                     self.b[i] -= self.A[i][idx] * equation[2]
             # make the substitution var = var' + l
-            self.variables[var][2] = equation[2]
+            self.variables[var].m = equation[2]
 
 
     # TODO: considerar casos:
@@ -251,7 +247,7 @@ class Parser():
             self.__add_variable(var)
         
         # make the substitution var = -var'
-        self.variables[var][3] = -1
+        self.variables[var].n = -1
 
         # solve it like a lower bound case
         equation[equation.index('<=')] = '>='
@@ -260,17 +256,12 @@ class Parser():
 
     def handle_free_var(self):
         """Separate free variables onto two bound variables."""
-        """
-        se for bound variable:
-            variables[2] = var_count
-            adiciona nova coluna para A -> vai ter os coeficientes da coluna variables[1] com o sinal trocado
-        """
         for var in self.free:
             # create new variable
-            self.variables[var][1] = self.var_count
+            self.variables[var].sindex = self.var_count
             self.var_count += 1
             # create column for new variable
-            col = [-a[self.variables[var][0]] for a in self.A]
+            col = [-a[self.variables[var].index] for a in self.A]
             # add column to matrix
             for (a, c) in zip(self.A, c):
                 a.append(c)
@@ -302,7 +293,7 @@ class Parser():
                 self.__add_variable(var)
                 a.append(0)
             # add coefficient to objective function
-            a[self.variables[var][0]] += coeff
+            a[self.variables[var].index] += coeff
         
         return [a, b]
     
@@ -350,7 +341,7 @@ class Parser():
 
     def __add_variable(self, var: str):
         """Add new variable to dictionary. Initially, also add it as a free variable."""
-        self.variables[var] = [self.var_count, -1, 0, 1]
+        self.variables[var] = Variable(self.var_count)
         self.var_count += 1
         self.free.append(var)
 
@@ -391,8 +382,6 @@ class Variable():
     
     Attributes:
 
-    name   : str
-        variable name.
     index  : int
         index of variable in the coefficient matrix.
     sindex : int
@@ -402,8 +391,7 @@ class Variable():
     n      : int
         value of the substitution var = var' * n.
     """
-    def __init__(self, _name: str, _idx1: int, _idx2: int = -1, _m: int = 0, _n: int = 1):
-        self.name = _name
+    def __init__(self, _idx1: int, _idx2: int = -1, _m: int = 0, _n: int = 1):
         self.index = _idx1
         self.sindex = _idx2
         self.m = _m
