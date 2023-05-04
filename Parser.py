@@ -55,8 +55,6 @@ class Parser():
                 if line.isspace(): # skip empty lines
                     continue
                 equation =  line.split()
-                if equation[0] == '#': # skip comments in the text
-                    continue
                 print(line, end='')
                 match equation[0]:
                     case "MIN":
@@ -298,7 +296,7 @@ class Parser():
             return [1, expression]
 
         # get name of var
-        var_regex = re.compile('([*/]?)([0-9]*[a-zA-Z]+[a-zA-Z0-9]*)([*/]?)')
+        var_regex = re.compile('([*/]?)(-?[0-9]*[a-zA-Z]+[a-zA-Z0-9]*)([*/]?)')
         var = var_regex.search(expression).group(2)
 
         # substitute var name with '1' in expression
@@ -340,14 +338,12 @@ class Parser():
         self.free.append(var)
 
 
-    # (x1 + x2) -> (- x1 - x2)
+    # (x1 + x2) -> (-x1 - x2)
     def __transform_max_case(self, equation: list[str]):
         """Multiply equation by minus one."""
         new_equation = []
-        if equation[0] != '-': 
-            new_equation.append('-')
-        if equation[0] == '+' or equation[0] == '-':
-            equation = equation[1:]
+        if equation[0][0] != '-':
+            equation[0] = '-'+equation[0]
         new_equation.append(equation[0])
         for word in equation[1:]:
             if word == '-':
