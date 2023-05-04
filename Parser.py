@@ -289,14 +289,14 @@ class Parser():
         return [a, b]
 
 
-    def __parse_expression(self, expression: list[str]): # 2*x1
+    def __parse_expression(self, expression: str): # 2*x1
         """Divide an expression into coefficient and variable."""
         if len(expression) == 1:
             # the coefficient equals one
             return [1, expression]
 
         # get name of var
-        var_regex = re.compile('([*/]?)(-?[0-9]*[a-zA-Z]+[a-zA-Z0-9]*)([*/]?)')
+        var_regex = re.compile('([*/]?-?)([0-9]*[a-zA-Z]+[a-zA-Z0-9]*)([*/]?)')
         var = var_regex.search(expression).group(2)
 
         # substitute var name with '1' in expression
