@@ -15,6 +15,8 @@ Possible cases:
 8- x1 <= i [DONE]
 9- x1 == 0 [DONE]
 10- variável livre [DONE]
+11- -x1 >= i [DONE]
+12- -x1 <= i [DONE] 
 """
 
 class Parser():
@@ -44,7 +46,6 @@ class Parser():
         self.free = []
 
 
-    """TODO: ver como tratar pontos flutuantes"""
     def parse_input(self, file_name):
         """Parse input data to create simplex input."""
 
@@ -82,9 +83,7 @@ class Parser():
         objective = [Fraction(0) for i in range(self.var_count)] # objective function
 
         # get the coefficients and variables of the equation
-        for i in range(len(equation)):
-            if equation[i] == '+' or equation[i] == '-':
-                continue
+        for i in range(0, len(equation), 2):
             # divide the expression into coefficient and variable
             coeff, var = self.__parse_expression(equation[i])
             if i > 0 and equation[i - 1] == '-':
@@ -134,12 +133,16 @@ class Parser():
         self.__add_slack_var(-1, a, b)
 
 
-    # TODO: considerar casos:
-    # 1. - x >= i
     def handle_bounding_greater_equal(self, equation: list[str]): # x1 >= i
         """Handle a bounding upper bound inequality and put it in standard form."""
         # get coefficient and variable name
         coeff, var = self.__parse_expression(equation[0])
+
+        # handle -x >= l
+        if coeff < 0:
+            equation = [self.__transform_max_case([equation[0]])[0], '<=', self.__transform_max_case([equation[2]])[0]]
+            self.handle_bounding_less_equal(equation)
+            return
 
         self.free.remove(var)
 
@@ -190,12 +193,16 @@ class Parser():
         self.__add_slack_var(1, a, b)
 
 
-    # TODO: considerar casos:
-    # 1. - x <= i
     def handle_bounding_less_equal(self, equation: list[str]): # x1 <= i
         """Handle a bounding upper bound inequality and put it in standard form."""
         # get coefficient and variable name
         coeff, var = self.__parse_expression(equation[0])
+
+        # handle -x <= l
+        if coeff < 0:
+            equation = [self.__transform_max_case([equation[0]])[0], '>=', self.__transform_max_case([equation[2]])[0]]
+            self.handle_bounding_greater_equal(equation)
+            return
 
         self.free.remove(var)
 
@@ -261,9 +268,7 @@ class Parser():
         a = [Fraction(0) for i in range(self.var_count)] # coefficients
         b = 0 # constraint
 
-        for i in range(len(equation)):
-            if equation[i] == '+' or equation[i] == '-':
-                continue
+        for i in range(0, len(equation), 2):
             # divide the expression into coefficient and variable
             coeff, var = self.__parse_expression(equation[i])
             if i > 0 and equation[i - 1] == '-':
@@ -337,8 +342,9 @@ class Parser():
         """Multiply equation by minus one."""
         new_equation = []
         if equation[0][0] != '-':
-            equation[0] = '-'+equation[0]
-        new_equation.append(equation[0])
+            new_equation.append('-'+equation[0])
+        else:
+            new_equation.append(equation[0][1:])
         for word in equation[1:]:
             if word == '-':
                 new_equation.append('+')
@@ -397,10 +403,6 @@ class Variable():
         index of variable in the coefficient matrix.
     sindex : int
         index of substitution variable in the coefficient matrix (var = var' + var").
-    m      : int
-        value of the substitution var = var' + m.
-    n      : int
-        value of the substitution var = var' * n.
     """
     def __init__(self, _idx1: int, _idx2: int = -1):
         self.index = _idx1
