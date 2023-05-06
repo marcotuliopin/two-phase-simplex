@@ -33,12 +33,8 @@ def main(A, b, c):
         for j in range(tableau.shape[1]):
             tableau[i, j] = Fraction(tableau[i, j])
 
-    # store the position of the basic and the non-basic variables
-    non_basic_vars = np.arange(m, m + n)
+    # store the position of the basic variables
     basic_vars = np.arange(m + n, 2*m + n)
-
-    # store the auxiliar variables location on the Tableau
-    w = np.s_[m + n: -1]
 
     # Phase 1
     # efetuate Gaussian Elimination of the costs
@@ -63,37 +59,36 @@ def main(A, b, c):
         __print_tableau(tableau)
 
     # call Simplex for the auxiliar Tableau
-    tableau, status, certificate = simplex(tableau, m, c = 1)
+    tableau, status, certificate, basic_vars = simplex(tableau, m, basic_vars, c = 1)
 
     # check if Simplex found an error in the problem
     if status != 'Optimal':
-        return [status, tableau, certificate]
+        return [status, tableau, certificate, basic_vars, m]
 
     # check if problem is Unviable
     if tableau[1, -1] < 0:
         certificate = tableau[0, :m]
-        return ['Unviable', tableau, certificate]
+        return ['Unviable', tableau, certificate, basic_vars, m]
 
 
     # Phase 2
     # remove the auxiliar variables from the Tableau
-    tableau = np.delete(tableau, w, 1)
-    tableau = np.delete(tableau, 1, 0)
+    tableau, basic_vars, m = remove_aux_variable(tableau, basic_vars, m, n)
 
     # TODO
     __print_tableau(tableau)
 
     # call Simplex for the original Tableau
-    tableau, status, certificate = simplex(tableau, m, c = 0)
+    tableau, status, certificate, basic_vars = simplex(tableau, m, basic_vars, c = 0)
 
     # TODO
     __print_tableau(tableau)
 
-    return [status, tableau, certificate]
+    return [status, tableau, certificate, basic_vars, m]
 
 
 
-def simplex(tableau, m, c):
+def simplex(tableau, m, basic_vars, c):
     """Solves a linear programming problem using the Two-Phase Simplex."""
     # store indexes of the different tableau parts
 
@@ -104,37 +99,34 @@ def simplex(tableau, m, c):
             break
 
         # choose variable to enter the base (pivot column)
-        pivot_column = np.argmin(tableau[c, m: -1]) + m
-        # for i in range(m, tableau.shape[1]):
-        #     if tableau[c, i] < 0:
-        #         pivot_column = i
-        #         break
+        for i in range(m, tableau.shape[1]):
+            if tableau[c, i] < 0:
+                pivot_column = i
+                break
         
         # check if the new base variable has unlimited growth potential
         if np.all(tableau[c + 1:, pivot_column] <= 0):
             certificate = tableau[c + 1:, pivot_column].T
-            return [tableau, 'Unbound', certificate]
+            return [tableau, 'Unbound', certificate, basic_vars]
 
         # calculate ratios
         ratios = calculate_ratios(tableau, pivot_column, c)
-
-        # check if all ratios are non-positive
-        if np.all(ratios <= 0):
-            return [tableau , 'Unbound']
-
        
         # choose variable to leave the base (pivot row)
-        ratios = np.where(ratios > 0, ratios, np.inf)
+        ratios = np.where(ratios >= 0, ratios, np.inf)
         pivot_row = ratios.argmin() + 1 + c
 
         # perform pivot operation
-        tableau = gaussian_elimination(tableau, pivot_row, pivot_column, m)
+        tableau = gaussian_elimination(tableau, pivot_row, pivot_column, m, c)
+
+        # update basic variables indices
+        basic_vars[pivot_row - c - 1] = pivot_column
 
         # TODO
         __print_tableau(tableau)
 
     certificate = tableau[0, :m]
-    return [tableau, 'Optimal', certificate]
+    return [tableau, 'Optimal', certificate, basic_vars]
 
 
 def calculate_ratios(tableau, pivot_column, c):
@@ -143,23 +135,77 @@ def calculate_ratios(tableau, pivot_column, c):
     ratios = []
     for i in range(c + 1, tableau.shape[0]):
         if tableau[i, pivot_column] == 0:
-            ratios.append(Fraction(INF) if tableau[i, -1] > 0 else Fraction(-INF))
+            ratios.append(Fraction(-INF))
         else:
-            ratios.append(Fraction(tableau[i, - 1], tableau[i, pivot_column]))
+            ratios.append(Fraction(tableau[i, -1], tableau[i, pivot_column]))
     ratios = np.array(ratios)
     return ratios
 
 
-def gaussian_elimination(tableau, pivot_row, pivot_column, m):
+def gaussian_elimination(tableau, pivot_row, pivot_column, m, c):
     """Efetuate Gaussian Elimination."""
     pivot = tableau[pivot_row, pivot_column]
     tableau[pivot_row, :] = tableau[pivot_row, :] / pivot
-    for i in range(m + 1):
+    for i in range(m + 1 + c):
         if i == pivot_row:
             continue
         aux = tableau[i, pivot_column]
         tableau[i, :] = tableau[i, :] - aux * tableau[pivot_row, :]
     return tableau
+
+
+def remove_aux_variable(tableau, basic_vars, m, n):
+    """Remove auxiliar variables from the base."""
+    # check if any auxiliar variable was left in the column
+    j = 0
+    new_basic_vars = []
+    for i in range(len(basic_vars)):
+        # find an auxiliar variable in the base
+        if basic_vars[i] >= m + n + j:
+            # remove auxiliar variable from the base
+            print(tableau[i + 2, m: m + n])
+            if count_non_zero(tableau[i + 2 - j, m: m + n]):
+                # find a candidate to enter the base
+                for j in range(m, m + n):
+                    # check if candidate is valid
+                    if tableau[i + 2 - j, j] != 0 and j != basic_vars[i]:
+                        # perform pivot operation on cadidate
+                        tableau[i + 2 - j, :] = tableau[i + 2 - j, :] / tableau[i + 2 - j, j]
+                        tableau[1, :] = tableau[1, :] - tableau[1, j] * tableau[i + 2 - j, :]
+                        # add candidate to the base
+                        new_basic_vars.append(j)
+                        break
+            # remove the constraint, as it is redundant
+            else:
+                tableau = np.delete(tableau, i + 2 - j, 0)
+                tableau = np.delete(tableau, i, 1)
+
+                # TODO
+                __print_tableau(tableau)
+                m -= 1
+                j += 1
+        # the constraint does not refer to an auxiliar variable
+        else:
+            new_basic_vars.append(basic_vars[i])
+
+    # store the auxiliar variables location on the Tableau
+    w = np.s_[m + n: -1]
+
+    # remove auxiliar variables columns
+    tableau = np.delete(tableau, w, 1)
+    tableau = np.delete(tableau, 1, 0)
+
+    new_basic_vars = [i - j for i in new_basic_vars]
+    return [tableau, np.array(new_basic_vars), m]
+
+
+def count_non_zero(array):
+    """Count number of non zeros in the array."""
+    i = 0
+    for c in array:
+        if c != Fraction(0):
+            i += 1
+    return i
 
 
 def __print_tableau(tableau):

@@ -148,7 +148,7 @@ class Parser():
         b += b_aux # Ex: x1 + x2 + 3 >= 1
 
         # handle a bounding constraint. Ex: x >= l
-        if '+' not in equation and '-' not in equation:
+        if len(equation[:idx]) <= 2:
             # get coefficient and variable name
             coeff, var = self.__parse_expression(equation[0])
             # get right hand side of constraint
@@ -166,11 +166,19 @@ class Parser():
         """Put an upper bound inequality in the standard form and add it to the matrix."""
         idx = equation.index('<=')
 
+        # handle - x <= 0 
+        if len(equation) == 4:
+            if equation[0] == '-' and equation[3] == '0':
+                new_equation = equation[1]
+                new_equation.extend(['>=', equation[3]])
+                self.handle_greater_equal(new_equation)
+                return
+
         # get right hand side of constraint
         if equation[idx + 1] == '-':
             new_equation = self.__transform_max_case(equation[:idx])
-            new_equation.extend(['<=', equation[idx + 2]])
-            self.handle_less_equal(new_equation)
+            new_equation.extend(['>=', equation[idx + 2]])
+            self.handle_greater_equal(new_equation)
             return
         else:
             b = Fraction(equation[idx + 1])
@@ -192,8 +200,8 @@ class Parser():
             new_equation.extend(['==', equation[idx + 2]])
             equation = new_equation
 
-        # check if it's a bounding constraint. Ex: x == 0
-        if '+' not in equation and '-' not in equation:
+        # check if it's a bounding constraint. Ex: x == 0 and - x == 3 
+        if len(equation[:idx]) <= 2:
             eq1 = equation # create lower bound equation
             eq1[idx] = '>='
             self.get_constraint(eq1) # parse equation

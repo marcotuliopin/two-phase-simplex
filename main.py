@@ -5,11 +5,10 @@ from tabulate import tabulate
 from Parser import Parser
 import simplex
 
-def main():
+def main(input_filename, output_filename):
     parser = Parser()
     
     # read and parse input
-    input_filename = argv[1]
     parser.parse_input(input_filename)
 
     # create Simplex inputs
@@ -20,14 +19,13 @@ def main():
     print(c)
 
     # perform the Simplex Method
-    status, tableau, certificate = simplex.main(A, b, c)
+    status, tableau, certificate, basic_vars, m = simplex.main(A, b, c)
 
     # handle the results of the Simplex Method
-    output_filename = argv[2]
-    handle_status(status, tableau, certificate, output_filename)
+    handle_status(status, tableau, certificate, basic_vars, output_filename, m)
 
 
-def handle_status(status, tableau, certificate, output_filename):
+def handle_status(status, tableau, certificate, basic_vars, output_filename, m):
     """Handle the results of the Simplex Method."""
     new_certificate = []
     for value in certificate:
@@ -45,8 +43,11 @@ def handle_status(status, tableau, certificate, output_filename):
                 f.write('otimo\n')
                 f.write('Objetivo: ' + fraction_to_string(tableau[0, -1]) + '\n')
                 f.write('Solucao:\n')
-                for value in tableau[1:, -1]:
-                    f.write(fraction_to_string(value) + ' ')
+                for i in range(m, tableau.shape[1] - 1):
+                    if i in basic_vars:
+                        f.write(fraction_to_string(tableau[np.where(basic_vars == i)[0][0] + 1, -1]) + ' ')
+                    else:
+                        f.write(fraction_to_string(Fraction(0)) + ' ')
                 f.write('\n')
 
         f.write('Certificado:' + '\n')
@@ -65,4 +66,9 @@ def __print_tableau(tableau):
 
 
 if __name__ == '__main__':
-    main()
+    # main(argv[1], argv[2])
+
+    with open(argv[1], 'r') as file:
+        for line in file:
+            names = line.split()
+            main('input/'+names[0], 'output/'+names[1])
