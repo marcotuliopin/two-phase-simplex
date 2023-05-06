@@ -68,10 +68,13 @@ class Parser():
                         # get constraint and add it to coefficient matrix and constraint vector
                         self.get_constraint(equation)
         
+        # if self.free:
+        #     # handle any free variable
+        #     for var in self.free:
+        #         self.handle_free_var(var)
         if self.free:
             # handle any free variable
-            for var in self.free:
-                self.handle_free_var(var)
+            self.handle_free_var()
         # empty list of free variables
         self.free.clear()
 
@@ -183,6 +186,12 @@ class Parser():
         """Handles a equality constraint and put it in standard form."""
         idx = equation.index('==')
 
+        # check if right hand side of constraint is negative
+        if equation[idx + 1] == '-':
+            new_equation = self.__transform_max_case(equation[:idx])
+            new_equation.extend(['==', equation[idx + 2]])
+            equation = new_equation
+
         # check if it's a bounding constraint. Ex: x == 0
         if '+' not in equation and '-' not in equation:
             eq1 = equation # create lower bound equation
@@ -195,6 +204,7 @@ class Parser():
             return
 
         # get right side of the inequation
+        idx = equation.index('==')
         b = Fraction(int(equation[idx + 1]))
         # get coefficients and any literal on left hand side of constraint
         a, b_aux = self.parse_constraint(equation[:idx])
@@ -206,20 +216,43 @@ class Parser():
         self.b.append(b)
 
 
-    def handle_free_var(self, var):
+    # def handle_free_var(self, var):
+    #     """Separates free variables onto two bound variables."""
+    #     # create new variable
+    #     self.variables[var].sindex = self.var_count
+    #     self.var_count += 1
+
+    #     # create column for new variable
+    #     col = [-a[self.variables[var].index] for a in self.A]
+    #     # add column to matrix
+    #     for (a, c) in zip(self.A, col):
+    #         a.append(c)
+        
+    #     # add variable to the objective function
+    #     val = -self.objective[self.variables[var].index]
+    #     self.objective.append(val)
+
+    def handle_free_var(self):
         """Separates free variables onto two bound variables."""
         # create new variable
-        self.variables[var].sindex = self.var_count
-        self.var_count += 1
+        new_var = 'W'
+        self.__add_variable(new_var)
+        self.free.remove(new_var)
 
         # create column for new variable
-        col = [-a[self.variables[var].index] for a in self.A]
+        col = [0 for a in self.A]
+        for var in self.free:
+            idx = self.variables[var].index
+            for i in range(len(self.A)):
+                col[i] -= self.A[i][idx]
         # add column to matrix
         for (a, c) in zip(self.A, col):
             a.append(c)
         
         # add variable to the objective function
-        val = -self.objective[self.variables[var].index]
+        val = 0
+        for c in self.objective:
+            val -= c
         self.objective.append(val)
 
 
@@ -293,11 +326,10 @@ class Parser():
             while len(self.A[0]) < len(row):
                 for a in self.A:
                     a.append(Fraction(0))
-                self.objective.append(Fraction(0))
-        else:
-            self.objective.append(Fraction(0))
         self.A.append(row)
-        return
+
+        while len(self.objective) < len(row):
+            self.objective.append(Fraction(0))
 
 
     def __add_variable(self, var: str):

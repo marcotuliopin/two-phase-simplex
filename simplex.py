@@ -18,7 +18,7 @@ def main(A, b, c):
 
     # add auxiliar variables for Simplex Phase 1
     A = np.hstack((A, np.eye(m)))
-    c_aux = np.concatenate((np.zeros(n), np.ones(m))) * -1
+    c_aux = np.concatenate((np.zeros(n), np.ones(m)))
 
     # transpose the constraint row vector
     b = np.insert(b, 0, 0)[np.newaxis].T
@@ -104,29 +104,28 @@ def simplex(tableau, m, c):
             break
 
         # choose variable to enter the base (pivot column)
-        for i in range(m, tableau.shape[1]):
-            if tableau[c, i] < 0:
-                pivot_column = i
-                break
+        pivot_column = np.argmin(tableau[c, m: -1]) + m
+        # for i in range(m, tableau.shape[1]):
+        #     if tableau[c, i] < 0:
+        #         pivot_column = i
+        #         break
         
         # check if the new base variable has unlimited growth potential
         if np.all(tableau[c + 1:, pivot_column] <= 0):
             certificate = tableau[c + 1:, pivot_column].T
-            # TODO: status Unlimited
-            return [tableau, 'Unlimited', certificate]
+            return [tableau, 'Unbound', certificate]
 
         # calculate ratios
         ratios = calculate_ratios(tableau, pivot_column, c)
 
         # check if all ratios are non-positive
         if np.all(ratios <= 0):
-            # TODO: status Unbound
             return [tableau , 'Unbound']
 
        
         # choose variable to leave the base (pivot row)
         ratios = np.where(ratios > 0, ratios, np.inf)
-        pivot_row = ratios.argmin() + 1
+        pivot_row = ratios.argmin() + 1 + c
 
         # perform pivot operation
         tableau = gaussian_elimination(tableau, pivot_row, pivot_column, m)

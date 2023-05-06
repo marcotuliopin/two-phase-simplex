@@ -15,8 +15,9 @@ def main():
     # create Simplex inputs
     A = np.array(parser.A)
     b = np.array(parser.b)
-    __print_tableau(np.hstack((A, b[np.newaxis].T)))
     c = np.array(parser.objective)
+    __print_tableau(np.hstack((A, b[np.newaxis].T)))
+    print(c)
 
     # perform the Simplex Method
     status, tableau, certificate = simplex.main(A, b, c)
@@ -38,7 +39,7 @@ def handle_status(status, tableau, certificate, output_filename):
         match status:
             case 'Unviable':
                 f.write('inviavel\n')
-            case 'Unlimited':
+            case 'Unbound':
                 f.write('ilimitado\n')
             case 'Optimal':
                 f.write('otimo\n')
@@ -47,8 +48,6 @@ def handle_status(status, tableau, certificate, output_filename):
                 for value in tableau[1:, -1]:
                     f.write(fraction_to_string(value) + ' ')
                 f.write('\n')
-            case 'Unbound':
-                pass
 
         f.write('Certificado:' + '\n')
         for value in new_certificate:
