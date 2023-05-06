@@ -1,5 +1,6 @@
 from sys import argv
 from fractions import Fraction
+from tabulate import tabulate
 import numpy as np
 import re
 
@@ -75,6 +76,8 @@ class Parser():
         self.free.clear()
 
         self.__test_result()
+        print()
+        print()
 
 
     def get_objective_function(self, equation: list[str]):
@@ -130,7 +133,10 @@ class Parser():
 
         # get right hand side of constraint
         if equation[idx + 1] == '-':
-            b = -Fraction(equation[idx + 2])
+            new_equation = self.__transform_max_case(equation[:idx])
+            new_equation.extend(['<=', equation[idx + 2]])
+            self.handle_less_equal(new_equation)
+            return
         else:
             b = Fraction(equation[idx + 1])
 
@@ -159,7 +165,10 @@ class Parser():
 
         # get right hand side of constraint
         if equation[idx + 1] == '-':
-            b = -Fraction(equation[idx + 2])
+            new_equation = self.__transform_max_case(equation[:idx])
+            new_equation.extend(['<=', equation[idx + 2]])
+            self.handle_less_equal(new_equation)
+            return
         else:
             b = Fraction(equation[idx + 1])
 
@@ -364,8 +373,12 @@ class Parser():
                     print(',', end='')
                 slack += 1
         print(']')
-        for i in range(len(self.A)):
-            print(self.A[i], self.b[i])
+        # aux = []
+        # for i in range(len(self.A)):
+        #     aux.append(self.A[i])
+        #     aux[i].append(self.b[i])
+        # table = tabulate(aux, tablefmt="fancy_grid")
+        # print(table)
 
 class Variable():
     """Variable of a LP.
