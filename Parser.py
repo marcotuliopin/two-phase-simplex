@@ -28,13 +28,15 @@ class Parser():
             number of variables in the LP. 
         variables : dict[str, Variable]
             variables information. See Variable definition for more.
-        slack     : list[int]
+        slack : list[int]
             column index in coefficient matrix.
+        optimal_value : int
+            initial value of objective function.
         objective : list[int]
             coefficients of the objective function.
-        A         : list[list[int]]
+        A : list[list[int]]
             coefficient matrix of the constraints.
-        b         : list[int]
+        b : list[int]
             right-hand side values of the constraints.
     """
     def __init__(self):
@@ -42,6 +44,7 @@ class Parser():
         self.variables = {}
         self.slack = []
         self.objective = []
+        self.optimal_value = Fraction(0) 
         self.A = []
         self.b = []
         self.free = []
@@ -68,18 +71,16 @@ class Parser():
                         # get constraint and add it to coefficient matrix and constraint vector
                         self.get_constraint(equation)
         
-        # if self.free:
-        #     # handle any free variable
-        #     for var in self.free:
-        #         self.handle_free_var(var)
         if self.free:
             # handle any free variable
-            self.handle_free_var()
+            for var in self.free:
+                self.handle_free_var(var)
+        # if self.free:
+        #     # handle any free variable
+        #     self.handle_free_var()
         # empty list of free variables
         self.free.clear()
 
-        self.__test_result()
-        print()
         print()
 
 
@@ -103,8 +104,10 @@ class Parser():
             if i > 0 and equation[i - 1] == '-':
                 coeff = -coeff
 
-            # ignore the expression if it's a literal
+            # the expression if it's a literal
             if not var:
+                self.optimal_value += coeff
+                i += j
                 continue
             # add new variable to the dictionary
             elif not var in self.variables:
@@ -135,7 +138,7 @@ class Parser():
         idx = equation.index('>=')
 
         # get right hand side of constraint
-        if equation[idx + 1] == '-':
+        if equation[idx + 1] == '-': # handle negative right-side of equation. Ex: x >= -3
             new_equation = self.__transform_max_case(equation[:idx])
             new_equation.extend(['<=', equation[idx + 2]])
             self.handle_less_equal(new_equation)
@@ -148,7 +151,7 @@ class Parser():
         b += b_aux # Ex: x1 + x2 + 3 >= 1
 
         # handle a bounding constraint. Ex: x >= l
-        if len(equation[:idx]) <= 2:
+        if len(equation[:idx]) < 2:
             # get coefficient and variable name
             coeff, var = self.__parse_expression(equation[0])
             # get right hand side of constraint
@@ -200,19 +203,20 @@ class Parser():
             new_equation.extend(['==', equation[idx + 2]])
             equation = new_equation
 
-        # check if it's a bounding constraint. Ex: x == 0 and - x == 3 
-        if len(equation[:idx]) <= 2:
-            eq1 = equation # create lower bound equation
-            eq1[idx] = '>='
-            self.get_constraint(eq1) # parse equation
+        idx = equation.index('==')
 
-            eq2 = equation # create upper bound equation
-            eq2[idx] = '<='
-            self.get_constraint(eq2) # parse equation
-            return
+        # # check if it's a bounding constraint. Ex: x == 0 and - x == 3 
+        # if len(equation[:idx]) <= 2:
+        #     eq1 = equation # create lower bound equation
+        #     eq1[idx] = '>='
+        #     self.get_constraint(eq1) # parse equation
+
+        #     eq2 = equation # create upper bound equation
+        #     eq2[idx] = '<='
+        #     self.get_constraint(eq2) # parse equation
+        #     return
 
         # get right side of the inequation
-        idx = equation.index('==')
         b = Fraction(int(equation[idx + 1]))
         # get coefficients and any literal on left hand side of constraint
         a, b_aux = self.parse_constraint(equation[:idx])
@@ -224,44 +228,45 @@ class Parser():
         self.b.append(b)
 
 
-    # def handle_free_var(self, var):
-    #     """Separates free variables onto two bound variables."""
-    #     # create new variable
-    #     self.variables[var].sindex = self.var_count
-    #     self.var_count += 1
-
-    #     # create column for new variable
-    #     col = [-a[self.variables[var].index] for a in self.A]
-    #     # add column to matrix
-    #     for (a, c) in zip(self.A, col):
-    #         a.append(c)
-        
-    #     # add variable to the objective function
-    #     val = -self.objective[self.variables[var].index]
-    #     self.objective.append(val)
-
-    def handle_free_var(self):
+    def handle_free_var(self, var):
         """Separates free variables onto two bound variables."""
         # create new variable
-        new_var = 'W'
-        self.__add_variable(new_var)
-        self.free.remove(new_var)
+        self.variables[var].sindex = self.var_count
+        self.var_count += 1
 
         # create column for new variable
-        col = [0 for a in self.A]
-        for var in self.free:
-            idx = self.variables[var].index
-            for i in range(len(self.A)):
-                col[i] -= self.A[i][idx]
+        col = [-a[self.variables[var].index] for a in self.A]
         # add column to matrix
         for (a, c) in zip(self.A, col):
             a.append(c)
         
         # add variable to the objective function
-        val = 0
-        for c in self.objective:
-            val -= c
+        val = -self.objective[self.variables[var].index]
         self.objective.append(val)
+
+
+    # def handle_free_var(self):
+    #     """Separates free variables onto two bound variables."""
+    #     # create new variable
+    #     new_var = 'W'
+    #     self.__add_variable(new_var)
+    #     self.free.remove(new_var)
+
+    #     # create column for new variable
+    #     col = [0 for a in self.A]
+    #     for var in self.free:
+    #         idx = self.variables[var].index
+    #         for i in range(len(self.A)):
+    #             col[i] -= self.A[i][idx]
+    #     # add column to matrix
+    #     for (a, c) in zip(self.A, col):
+    #         a.append(c)
+        
+    #     # add variable to the objective function
+    #     val = 0
+    #     for c in self.objective:
+    #         val -= c
+    #     self.objective.append(val)
 
 
     def parse_constraint(self, equation: list[str]):
@@ -287,6 +292,7 @@ class Parser():
             # coeff is a free number, so subtract it from constraint
             if not var:
                 b -= coeff
+                i += j
                 continue
             # add new variable to the dictionary
             elif not var in self.variables:
@@ -304,7 +310,9 @@ class Parser():
         """Divides an expression into coefficient and variable."""
         # get name of var
         var_regex = re.compile('([*/]?-?)([0-9]*[a-zA-Z]+[a-zA-Z0-9]*)([*/]?)')
-        var = var_regex.search(expression).group(2)
+        var = var_regex.search(expression)
+        if var:
+            var = var.group(2)
 
         # substitute var name with '1' in expression
         f = lambda match : match.group(1) + '1' + match.group(3)
@@ -388,37 +396,7 @@ class Parser():
             else:
                 coeff /= Fraction(symbols[i + 1])
         return coeff
-    
 
-    def __test_result(self):
-        """Prints test."""
-        print()
-        print('--------------------------------------------')
-        print('Resultado:')
-        print('MAX ', self.objective)
-        print('--------------------------------------------')
-        print('[', end='')
-        slack = 1
-        for i in range(len(self.A[0])):
-            p = True
-            for name, var in self.variables.items():
-                if var.index == i or var.sindex == i:
-                    print(name, end='')
-                    if i < len(self.A[0]) - 1:
-                        print(',', end='')
-                    p = False
-            if p: 
-                print('s'+str(slack), end='')
-                if i < len(self.A[0]) - 1:
-                    print(',', end='')
-                slack += 1
-        print(']')
-        # aux = []
-        # for i in range(len(self.A)):
-        #     aux.append(self.A[i])
-        #     aux[i].append(self.b[i])
-        # table = tabulate(aux, tablefmt="fancy_grid")
-        # print(table)
 
 class Variable():
     """Variable of a LP.

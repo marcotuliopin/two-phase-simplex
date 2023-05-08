@@ -22,6 +22,7 @@ def main(input_filename, output_filename):
     status, tableau, certificate, basic_vars, m = simplex.main(A, b, c)
 
     # handle the results of the Simplex Method
+    tableau[0, -1] += parser.optimal_value
     handle_status(status, tableau, certificate, basic_vars, output_filename, m)
 
 
