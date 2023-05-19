@@ -1,4 +1,6 @@
 from sys import argv
+from fractions import Fraction
+from tabulate import tabulate
 import numpy as np
 import re
 
@@ -11,35 +13,52 @@ Possible cases:
 5- x1 + x2 == +- 1 [DONE]
 6- x1 >= 0 [DONE]
 7- x1 >= i; i != 0 [DONE]
-8- x1 <= i [TODO]
-9- x1 == 0 [TODO]
+8- x1 <= i [DONE]
+9- x1 == 0 [DONE]
+10- variável livre [DONE]
+11- -x1 >= i [DONE]
+12- -x1 <= i [DONE] 
 """
 
 class Parser():
+    """Reads the input LP for Simplex. Put the expressions in standard form while reading.
+
+    Attributes:
+        var_count : int
+            number of variables in the LP. 
+        variables : dict[str, Variable]
+            variables information. See Variable definition for more.
+        slack : list[int]
+            column index in coefficient matrix.
+        optimal_value : int
+            initial value of objective function.
+        objective : list[int]
+            coefficients of the objective function.
+        A : list[list[int]]
+            coefficient matrix of the constraints.
+        b : list[int]
+            right-hand side values of the constraints.
+    """
     def __init__(self):
-        self.epsilon = 10 ** -4
-        self.var_count = 0 # number of variables
-        self.variables = {} # variables {name of variable: #[column index in self.A, 
-                                                           # column 2 index in self.A,
-                                                           # substitution]}
-        self.slack = [] # slack variables[ column index in self.A]
-        self.objective = [] # objective function [coefficients]
-        self.A = [] # coefficient matrix
-        self.b = [] # constraint vector
-        self.free = [] # free variables
+        self.var_count = 0
+        self.variables = {}
+        self.slack = []
+        self.objective = []
+        self.optimal_value = Fraction(0) 
+        self.A = []
+        self.b = []
+        self.free = []
 
 
-    """TODO: ver como tratar pontos flutuantes"""
     def parse_input(self, file_name):
-        """Parse input data to create simplex input."""
+        """Parses input data to create simplex input."""
 
         with open(file_name, 'r') as file:
             for line in file:
                 if line.isspace(): # skip empty lines
                     continue
                 equation =  line.split()
-                if equation[0] == '#': # skip comments in the text
-                    continue
+                print(line, end='')
                 match equation[0]:
                     case "MIN":
                         # get objective function when it's minimization
@@ -51,202 +70,249 @@ class Parser():
                     case _:
                         # get constraint and add it to coefficient matrix and constraint vector
                         self.get_constraint(equation)
-        print('ok')
+        
+        if self.free:
+            # handle any free variable
+            for var in self.free:
+                self.handle_free_var(var)
+        # if self.free:
+        #     # handle any free variable
+        #     self.handle_free_var()
+        # empty list of free variables
+        self.free.clear()
+
+        print()
 
 
-    def get_objective_function(self, equation: list[str]): # MIN x1 + 2*x2
-        """Build objective function from expression."""
-        objective = [0 for i in range(self.var_count)] # objective function
+    def get_objective_function(self, equation: list[str]):
+        """Builds objective function from expression."""
+        objective = [Fraction(0) for i in range(self.var_count)] # objective function
 
         # get the coefficients and variables of the equation
-        for i in range(len(equation)):
-            if equation[i] == '+' or equation[i] == '-':
+        i = 0
+        while i < len(equation):
+            if equation[i] in ['+', '-']:
+                i += 1
                 continue
+
+            expression, j = self.__get_expression(equation[i:])
+
             # divide the expression into coefficient and variable
-            coeff, var = self.__parse_expression(equation[i])
+            coeff, var = self.__parse_expression(expression)
+
+            # treat cases of subtraction
             if i > 0 and equation[i - 1] == '-':
-                # treat cases of subtraction
                 coeff = -coeff
+
+            # the expression if it's a literal
             if not var:
-                # ignore the expression if it's a literal
+                self.optimal_value += coeff
+                i += j
                 continue
+            # add new variable to the dictionary
             elif not var in self.variables:
-                # add new variable to the dictionary
                 self.__add_variable(var)
+                # add new variable to the objective function
                 objective.append(0)
+
             # add coefficient to objective function
-            objective[self.variables[var][0]] += coeff
+            objective[self.variables[var].index] += coeff
+            i += j
+
         return objective
 
 
-    def get_constraint(self, equation: list[str]): # x1 + x2 <= 1 ou x1 + x2 == 1 ou x1 + x2 >= 0
+    def get_constraint(self, equation: list[str]):
         """Get constraint from equation.""" 
         if '>=' in equation:
-            self.handle_lower_bound(equation)
+            self.handle_greater_equal(equation)
         elif '<=' in equation:
-            self.handle_upper_bound(equation)
+            self.handle_less_equal(equation)
         else:
             self.handle_equality(equation)
-        
         return
 
 
-    def handle_lower_bound(self, equation: list[str]): # x1 + x2 >= 1
+    def handle_greater_equal(self, equation: list[str]): # x1 + x2 >= 1
         """Put a lower bound inequality in the standard form and add it to the matrix."""
         idx = equation.index('>=')
-        a = [] # coefficients
-        b = 0 # constraint
 
-        # TODO
-        # check if it's a bounding constraint. Ex: x >= 0
-        if '+' not in equation and '-' not in equation:
-            self.handle_bounding_lower_bound(equation)
-
-        if equation[idx + 1] == '-': # x1 + x2 >= -1 -> - x1 - x2 >= 1
-            # handle negative constraint
-            b = equation[idx + 2]
-            equation[:idx] = self.__transform_max_case(equation[:idx])
+        # get right hand side of constraint
+        if equation[idx + 1] == '-': # handle negative right-side of equation. Ex: x >= -3
+            new_equation = self.__transform_max_case(equation[:idx])
+            new_equation.extend(['<=', equation[idx + 2]])
+            self.handle_less_equal(new_equation)
+            return
         else:
-            b = int(equation[idx + 1])
-            
+            b = Fraction(equation[idx + 1])
 
-        # get coefficients and constraint
+        # get coefficients and any literal on left hand side of constraint
         a, b_aux = self.parse_constraint(equation[:idx])
-        b += b_aux
+        b += b_aux # Ex: x1 + x2 + 3 >= 1
 
-        # add slack variable
-        self.slack.append(self.var_count)
-        self.var_count += 1
-        a.append(-1)
+        # handle a bounding constraint. Ex: x >= l
+        if len(equation[:idx]) < 2:
+            # get coefficient and variable name
+            coeff, var = self.__parse_expression(equation[0])
+            # get right hand side of constraint
+            constraint = Fraction(b, coeff) # Ex: 2*x >= 2 -> x >= 1
+            # variable is bounded
+            if constraint >= 0:
+                self.free.remove(var)
+                if constraint == 0: # x >= 0
+                    return
 
-        # add new values to coefficient matrix
-        self.__add_row(a)
-        # add new constraint to constraint list
-        self.b.append(b)
+        self.__add_constraint_with_slack_var(-1, a, b)
 
-        return
-        
 
-    def handle_upper_bound(self, equation: list[str]): # x1 + x2 <= 1
+    def handle_less_equal(self, equation: list[str]): # x1 + x2 <= 1
         """Put an upper bound inequality in the standard form and add it to the matrix."""
         idx = equation.index('<=')
-        a = [] # coefficients
-        b = 0 # constraint
 
-        # TODO
-        # check if it's a bounding constraint. Ex: x <= 0
-        if '+' not in equation and '-' not in equation:
-            self.handle_bounding_upper_bound(equation)
+        # handle - x <= 0 
+        if len(equation) == 4:
+            if equation[0] == '-' and equation[3] == '0':
+                new_equation = equation[1]
+                new_equation.extend(['>=', equation[3]])
+                self.handle_greater_equal(new_equation)
+                return
 
-        # get right side of the inequation
-        if equation[idx + 1] == '-': # x1 + x2 >= -1 -> - x1 - x2 >= 1
-            # handle negative constraint
-            b = equation[idx + 2]
-            equation[:idx] = self.__transform_max_case(equation[:idx])
+        # get right hand side of constraint
+        if equation[idx + 1] == '-':
+            new_equation = self.__transform_max_case(equation[:idx])
+            new_equation.extend(['>=', equation[idx + 2]])
+            self.handle_greater_equal(new_equation)
+            return
         else:
-            b = int(equation[idx + 1])
+            b = Fraction(equation[idx + 1])
 
-        # get coefficients and constraint
+        # get coefficients and any literal on left hand side of constraint
         a, b_aux = self.parse_constraint(equation[:idx])
-        b += b_aux
+        b += b_aux # Ex: x1 + x2 + 3 <= 1
 
-        # add slack variable
-        self.slack.append(self.var_count)
-        self.var_count += 1
-        a.append(1)
-
-        # add new values to coefficient matrix
-        self.__add_row(a)
-        # add new constraint to constraint list
-        self.b.append(b)
-
-        return
+        self.__add_constraint_with_slack_var(1, a, b)
 
 
     def handle_equality(self, equation: list[str]): # x1 + x2 == 1
-        """Turn an equality into two inequalities, using the property that u == v
-        is the same as u <= v and u >= v. After that, put both in the standard form
-        and add to the matrix."""
+        """Handles a equality constraint and put it in standard form."""
         idx = equation.index('==')
 
-        # TODO
-        # check if it's a bounding constraint. Ex: x == 0
-        if '+' not in equation and '-' not in equation:
-            pass
+        # check if right hand side of constraint is negative
+        if equation[idx + 1] == '-':
+            new_equation = self.__transform_max_case(equation[:idx])
+            new_equation.extend(['==', equation[idx + 2]])
+            equation = new_equation
 
-        eq1 = equation # create lower bound equation
-        eq1[idx] = '>='
-        self.get_constraint(eq1) # parse equation
+        idx = equation.index('==')
 
-        eq2 = equation # create upper bound equation
-        eq2[idx] = '<='
-        self.get_constraint(eq2) # parse equation
+        # # check if it's a bounding constraint. Ex: x == 0 and - x == 3 
+        # if len(equation[:idx]) <= 2:
+        #     eq1 = equation # create lower bound equation
+        #     eq1[idx] = '>='
+        #     self.get_constraint(eq1) # parse equation
 
+        #     eq2 = equation # create upper bound equation
+        #     eq2[idx] = '<='
+        #     self.get_constraint(eq2) # parse equation
+        #     return
 
-    # TODO: considerar casos:
-    # 1. - x >= i
-    # 2. x >= - i
-    def handle_bounding_lower_bound(self, equation: list[str]): # x1 >= i
-        """Handle a bounding upper bound inequality and put it in standard form."""
-        var = equation[0]
+        # get right side of the inequation
+        b = Fraction(int(equation[idx + 1]))
+        # get coefficients and any literal on left hand side of constraint
+        a, b_aux = self.parse_constraint(equation[:idx])
+        b += b_aux # Ex: x1 + x2 + 3 <= 1
 
-        # add variable to the dictionary if never seen before
-        if not var in self.variables:
-            self.__add_variable(var)
-
-        if equation[2] == '0': # TODO: considerar equation[2] == '-'
-            # handle var >= 0
-            # variable is already in the standard form
-            self.free.pop(self.free.index(var))
-        else:
-            # handle var >= l; l != 0
-            idx = self.variables[var][0]
-            # find each constraint that var happens
-            for i in range(len(self.A)):
-                if self.A[i][idx] != 0:
-                    # make b = b - coeff*l
-                    self.b[i] -= self.A[i][idx] * equation[2]
-            # make the substitution var = var' + l
-            self.variables[var][2] = equation[2]
+        # add new values to coefficient matrix
+        self.__add_row(a)
+        # add new constraint to constraint list
+        self.b.append(b)
 
 
-    # TODO: está errado. Consertar.
+    def handle_free_var(self, var):
+        """Separates free variables onto two bound variables."""
+        # create new variable
+        self.variables[var].sindex = self.var_count
+        self.var_count += 1
+
+        # create column for new variable
+        col = [-a[self.variables[var].index] for a in self.A]
+        # add column to matrix
+        for (a, c) in zip(self.A, col):
+            a.append(c)
+        
+        # add variable to the objective function
+        val = -self.objective[self.variables[var].index]
+        self.objective.append(val)
+
+
+    # def handle_free_var(self):
+    #     """Separates free variables onto two bound variables."""
+    #     # create new variable
+    #     new_var = 'W'
+    #     self.__add_variable(new_var)
+    #     self.free.remove(new_var)
+
+    #     # create column for new variable
+    #     col = [0 for a in self.A]
+    #     for var in self.free:
+    #         idx = self.variables[var].index
+    #         for i in range(len(self.A)):
+    #             col[i] -= self.A[i][idx]
+    #     # add column to matrix
+    #     for (a, c) in zip(self.A, col):
+    #         a.append(c)
+        
+    #     # add variable to the objective function
+    #     val = 0
+    #     for c in self.objective:
+    #         val -= c
+    #     self.objective.append(val)
+
+
     def parse_constraint(self, equation: list[str]):
-        """Help parsing constraint equation."""
-        a = [0 for i in range(self.var_count)] # coefficients
+        """Helps parsing constraint equation."""
+        a = [Fraction(0) for i in range(self.var_count)] # coefficients
         b = 0 # constraint
 
-        for i in range(len(equation)):
-            if equation[i] == '+' or equation[i] == '-':
+        i = 0
+        while i < len(equation):
+            if equation[i] in ['+', '-']:
+                i += 1
                 continue
+
+            expression, j = self.__get_expression(equation[i:])
+
             # divide the expression into coefficient and variable
-            coeff, var = self.__parse_expression(equation[i])
+            coeff, var = self.__parse_expression(expression)
+
+            # treat cases of subtraction
             if i > 0 and equation[i - 1] == '-':
-                # treat cases of subtraction
                 coeff = -coeff
+
+            # coeff is a free number, so subtract it from constraint
             if not var:
-                # coeff is a free number, so subtract it from constraint
                 b -= coeff
+                i += j
                 continue
+            # add new variable to the dictionary
             elif not var in self.variables:
-                # add new variable to the dictionary
                 self.__add_variable(var)
                 a.append(0)
+
             # add coefficient to objective function
-            a[self.variables[var][0]] += coeff
+            a[self.variables[var].index] += coeff
+            i += j
         
         return [a, b]
 
 
-    def __parse_expression(self, expression: list[str]): # 2*x1
-        """Divide an expression into coefficient and variable."""
-        if len(expression) == 1:
-            # the coefficient equals one
-            return [1, expression]
-
+    def __parse_expression(self, expression: str): # 2*x1
+        """Divides an expression into coefficient and variable."""
         # get name of var
-        var_regex = re.compile('([*/]?)([0-9]*[a-zA-Z]+[a-zA-Z0-9]*)([*/]?)')
-        var = var_regex.search(expression).group(2)
+        var_regex = re.compile('([*/]?-?)([0-9]*[a-zA-Z]+[a-zA-Z0-9]*)([*/]?)')
+        var = var_regex.search(expression)
+        if var:
+            var = var.group(2)
 
         # substitute var name with '1' in expression
         f = lambda match : match.group(1) + '1' + match.group(3)
@@ -255,33 +321,56 @@ class Parser():
         # get coefficient value
         coeff = self.__calculate_coeff(expression)
         return [coeff, var]
+    
+
+    def __add_constraint_with_slack_var(self, coeff, a, b):
+        """Helps adding slack variable."""
+        # add slack variable
+        self.slack.append(self.var_count)
+        self.var_count += 1
+        a.append(Fraction(coeff))
+
+        # add new values to coefficient matrix
+        self.__add_row(a)
+        # add new constraint to constraint list
+        self.b.append(b)
 
 
     def __add_row(self, row: list[int]):
-        """Add new row to coefficient matrix."""
-        # if self.A.shape[1] < len(row):
-            # give A the same number of columns as row
-        #     aux = np.zeros(self.A.shape[0], len(row) - self.A.shape[1])
-        #     self.A = np.hstack((self.A, aux))
-        # self.A = np.vstack((self.A, row)) 
+        """Adds new row to coefficient matrix."""
         if self.A:
             while len(self.A[0]) < len(row):
                 for a in self.A:
-                    a.append(0)
+                    a.append(Fraction(0))
         self.A.append(row)
-        return
+
+        while len(self.objective) < len(row):
+            self.objective.append(Fraction(0))
 
 
     def __add_variable(self, var: str):
-        """Add new variable to dictionary. Initially, also add it as a free variable."""
-        self.variables[var] = [self.var_count, -1, 0]
+        """Adds new variable to dictionary. Initially, also add it as a free variable."""
+        self.variables[var] = Variable(self.var_count)
         self.var_count += 1
         self.free.append(var)
+    
+
+    def __get_expression(self, equation: list[str]):
+        """Joins multiple symbols into an expression."""
+        # join the symbols from the expression
+        expression = ''
+        j = 0
+        for i in range(len(equation)):
+            if equation[i] in ['+', '-']:
+                break
+            expression = expression + equation[i]
+            j += 1
+
+        return [expression, j]
 
 
-    # (x1 + x2) -> (- x1 - x2)
     def __transform_max_case(self, equation: list[str]):
-        """Multiply equation by minus one."""
+        """Multiplies equation by minus one."""
         new_equation = []
         if equation[0] != '-': 
             new_equation.append('-')
@@ -297,15 +386,28 @@ class Parser():
                 new_equation.append(word)
         return new_equation
 
-
-    # 2*3*5 -> 30
     def __calculate_coeff(self, expression: list[str]):
-        """Calculate coefficient value."""
+        """Calculates coefficient value."""
         symbols = re.split('([*/])', expression)
-        coeff = int(symbols[0])
+        coeff = Fraction(symbols[0])
         for i in range(1, len(symbols), 2):
             if symbols[i] == '*':
-                coeff *= int(symbols[i + 1])
+                coeff *= Fraction(symbols[i + 1])
             else:
-                coeff /= int(symbols[i + 1])
+                coeff /= Fraction(symbols[i + 1])
         return coeff
+
+
+class Variable():
+    """Variable of a LP.
+    
+    Attributes:
+
+    index  : int
+        index of variable in the coefficient matrix.
+    sindex : int
+        index of substitution variable in the coefficient matrix (var = var' + var").
+    """ 
+    def __init__(self, _idx1: int, _idx2: int = -1):
+        self.index = _idx1
+        self.sindex = _idx2
