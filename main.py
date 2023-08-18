@@ -1,7 +1,6 @@
 from sys import argv
 import numpy as np
 from fractions import Fraction
-from tabulate import tabulate
 from Parser import Parser
 import simplex
 
@@ -11,19 +10,57 @@ def main(input_filename, output_filename):
     # read and parse input
     parser.parse_input(input_filename)
 
+    if parser.s:
+        for i in range(len(parser.s[0])):
+            parser.objective.append(0)
+
     # create Simplex inputs
-    A = np.array(parser.A)
+    A = np.hstack((parser.A, parser.s))
+    artificial_vars, artificial_costs, basic_vars = add_artificial_vars(A)
     b = np.array(parser.b)
     c = np.array(parser.objective)
-    __print_tableau(np.hstack((A, b[np.newaxis].T)))
-    print(c)
 
     # perform the Simplex Method
-    status, tableau, certificate, basic_vars, m = simplex.main(A, b, c)
+    status, tableau, certificate, basic_vars, m = simplex.main(A, b, c, basic_vars, artificial_vars, artificial_costs)
 
     # handle the results of the Simplex Method
     tableau[0, -1] += parser.optimal_value
+    if not parser.is_max:
+        tableau[0, -1] = -tableau[0, -1]
     handle_status(status, tableau, certificate, basic_vars, output_filename, m)
+
+
+def add_artificial_vars(A):
+    y, x = A.shape
+    I = np.eye(y)
+    basic_vars = np.zeros(y, dtype=int)
+    artificial_vars = np.zeros((y, y), dtype=int)
+    artificial_costs = np.zeros(y, dtype=int)
+    a_count = 0
+
+    for i in range(y):
+        var = check_column(A, I[:, i])
+        # add new auxiliar variable
+        if var == -1:
+            artificial_vars[:, a_count] = I[:, i]
+            artificial_costs[a_count] = 1
+            var = x
+            x += 1
+            a_count += 1
+        # add variable to the base
+        basic_vars[i] = var
+    
+    artificial_vars = np.delete(artificial_vars, np.s_[a_count:], axis=1)
+    artificial_costs = np.delete(artificial_costs, np.s_[a_count:])
+
+    return artificial_vars, artificial_costs, basic_vars
+
+
+def check_column(A, col):
+    for i in range(A.shape[1]):
+        if np.array_equal(A[:, i], col):
+            return i
+    return -1
 
 
 def handle_status(status, tableau, certificate, basic_vars, output_filename, m):
@@ -36,7 +73,7 @@ def handle_status(status, tableau, certificate, basic_vars, output_filename, m):
         f.write('Status: ')
 
         match status:
-            case 'Unviable':
+            case 'Infeasible':
                 f.write('inviavel\n')
             case 'Unbound':
                 f.write('ilimitado\n')
@@ -61,15 +98,4 @@ def fraction_to_string(fraction: Fraction):
     return str(ratio[0] / ratio[1])
 
 
-def __print_tableau(tableau):
-    table = tabulate(tableau, tablefmt="fancy_grid")
-    print(table)
-
-
-if __name__ == '__main__':
-    # main(argv[1], argv[2])
-
-    with open(argv[1], 'r') as file:
-        for line in file:
-            names = line.split()
-            main('input/'+names[0], 'output/'+names[1])
+main(argv[1], argv[2])
